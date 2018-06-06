@@ -1,19 +1,14 @@
 ﻿using UnityEngine;
+using System.Collections.Generic;
+using System;
 
-
-public class TableRow<T,V> : MonoBehaviour
+public class TableRow<T,V> : MonoBehaviour,IDisposable
 {
     public int Index { get; protected set; }
     public T Key { get; protected set; }
     protected TableView<T,V> View;
     [HideInInspector]
     public RectTransform RectTrans { get; protected set; }
-
-    // Use this for initialization
-    void Start()
-    {
-
-    }
 
     /// <summary>
     /// 初始化本行数据
@@ -34,18 +29,14 @@ public class TableRow<T,V> : MonoBehaviour
     {
         //View.AddEvent(RowEventName.ReadCanvas);
     }
-    public virtual void SetActive()
+    public virtual void SetActive(bool value)
     {
-        gameObject.SetActive(true);
+        gameObject.SetActive(value);
     }
-    public virtual void SetDisactive(bool isrecycle = false)
-    {
-        gameObject.SetActive(false);
-        if (isrecycle)
-        {
-            Clear();
-        }
-    }
+    //public virtual void SetDisactive()
+    //{
+    //    gameObject.SetActive(false);
+    //}
     /// <summary>
     /// 解析数据到对应的表现是形式
     /// 必须手动将key赋值给字段Key
@@ -59,13 +50,19 @@ public class TableRow<T,V> : MonoBehaviour
         Debug.Log(this.GetType());
         return true;
     }
-    /// <summary>
-    /// 清除
-    /// </summary>
-    protected virtual void Clear()
+    public virtual void Clone(T key,V value)
     {
-        Key = default(T);
+        ParseDate(key, value);
     }
+    /// <summary>
+    /// 值复制，引用不变
+    /// </summary>
+    /// <param name="row"></param>
+    public virtual void Clone(TableRow<T,V> row)
+    {
+        this.Key = row.Key;
+    }
+    
     /// <summary>
     /// 执行事件名称为eventname的事件
     /// </summary>
@@ -74,6 +71,15 @@ public class TableRow<T,V> : MonoBehaviour
     public virtual void RowExecuteEvent(string eventname,params object[] values)
     {
 
+    }
+    /// <summary>
+    /// 清空C#内存同时销毁Unity的物体释放内存
+    /// </summary>
+    public virtual void Dispose()
+    {
+        gameObject.SetActive(false);
+        Key = default(T);
+        //DestroyImmediate(Gameobje);
     }
     #region 具体的事件的实现在子类中写并注册到button的OnClick事件中
 

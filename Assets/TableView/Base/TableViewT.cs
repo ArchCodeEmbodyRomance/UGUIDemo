@@ -4,7 +4,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class TableView<T, V> : MonoBehaviour
+[DefaultExecutionOrder(1)]
+public class TableView<T, V> : MonoBehaviour,IDisposable
 {
     //在行初始化之后代理执行注册事件等方法的回调
     public Action AfterViewInited;
@@ -18,17 +19,10 @@ public class TableView<T, V> : MonoBehaviour
     public Button CloseBtn;
     //默认行数
     public int DefaultRow;
-    //行高度
-    public float ContentHeight;
-    //行间距
-    public float ContentInterval;
 
-    private List<TableRow<T, V>> RowPool = new List<TableRow<T, V>>();
-    public Dictionary<T, TableRow<T, V>> ActivedTableRows = new Dictionary<T, TableRow<T, V>>();
-    private Dictionary<string, Action<T>> RowEventDic = new Dictionary<string, Action<T>>();
-
-    //编辑器方法，运行时调整位置用
-    //private float _lastInternal = -1;
+    protected List<TableRow<T, V>> RowPool = new List<TableRow<T, V>>();
+    protected Dictionary<T, TableRow<T, V>> ActivedTableRows = new Dictionary<T, TableRow<T, V>>();
+    protected Dictionary<string, Action<T>> RowEventDic = new Dictionary<string, Action<T>>();    
 
     /// <summary>
     /// 是否初始化完成，一般在Awake之后肯定完成的
@@ -38,7 +32,7 @@ public class TableView<T, V> : MonoBehaviour
     /// <summary>
     /// 表中活动的行数
     /// </summary>
-    public int RowCount
+    public int Count
     {
         get { return ActivedTableRows.Count; }
     }
@@ -62,59 +56,29 @@ public class TableView<T, V> : MonoBehaviour
         }
         Init();
     }
-    // Use this for initialization
-    void Start()
-    {
-        //gameObject.SetActive(false);
-        ////在开始的时候先关闭ViewPort然后show的时候先打开物体在打开viewport 刷新一下的布局，避免viewpor的锚点在左下角。
-        ////效果有限
-        //Content.parent.gameObject.SetActive(false);
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        //编辑器调距离的时候用
-//#if UNITY_EDITOR
-//        if (_lastInternal != ContentInterval)
-//        {
-//            for (int i = 0; i > DefaultRow; i++)
-//            {
-//                RectTransform rt = RowPool[i].GetComponent<RectTransform>();
-//                rt.anchoredPosition = new Vector2(0, -(ContentHeight * i + ContentInterval * (i + 1)));
-//                rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, ContentHeight);
-//            }
-//            _lastInternal = ContentInterval;
-//        }
-//#endif
-    }
 
     /// <summary>
     /// 程序开始时根据最大数量初始化RowPool
     /// </summary>
 
-    protected void Init()
+    protected virtual void Init()
     {
-        TableRow<T, V>[] rows = Content.GetComponentsInChildren<TableRow<T, V>>();
+        TableRow<T, V>[] rows = Content.GetComponentsInChildren<TableRow<T, V>>(true);
         if (rows != null)
         {
             RowPool.AddRange(rows);
             for (int i = 0; i < rows.Length; i++)
             {
                 rows[i].Init(i, this);
-                rows[i].RectTrans.anchoredPosition = new Vector2(0, -(ContentHeight * i + ContentInterval * (i + 1)));
-                rows[i].RectTrans.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, ContentHeight);
-                rows[i].SetDisactive(false);
+                rows[i].SetActive(false);
             }
         }
         for (int i = RowPool.Count; i < DefaultRow; i++)
         {
             RectTransform rt = GameObject.Instantiate(CanvasRow, Content).GetComponent<RectTransform>();
-            rt.anchoredPosition = new Vector2(0, -(ContentHeight * i + ContentInterval * (i + 1)));
-            rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, ContentHeight);
             RowPool.Add(rt.GetComponent<TableRow<T, V>>());
             RowPool[i].Init(i, this);
-            RowPool[i].SetDisactive(false);
+            RowPool[i].SetActive(false);
         }
 
         Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical,0);
@@ -129,11 +93,9 @@ public class TableView<T, V> : MonoBehaviour
     protected void CreateNewRow()
     {
         RectTransform rt = GameObject.Instantiate(CanvasRow, Content).GetComponent<RectTransform>();
-        rt.anchoredPosition = new Vector2(0, -(ContentHeight * RowPool.Count + ContentInterval * (RowPool.Count + 1)));
-        rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, ContentHeight);
         RowPool.Add(rt.GetComponent<TableRow<T, V>>());
         RowPool[RowPool.Count-1].Init(RowPool.Count-1, this);
-        RowPool[RowPool.Count - 1].SetDisactive(false);
+        RowPool[RowPool.Count - 1].SetActive(false);
     }
     /// <summary>
     /// 在末尾添加行
@@ -159,8 +121,7 @@ public class TableView<T, V> : MonoBehaviour
             return false;
         }
         ActivedTableRows.Add(key, row);
-        row.SetActive();
-        Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, (ContentHeight + ContentInterval) * ActivedTableRows.Count);
+        row.SetActive(true);
         return true;
     }
 
@@ -186,6 +147,7 @@ public class TableView<T, V> : MonoBehaviour
         }
         return ActivedTableRows[key].ParseDate(key, value);
     }
+
     /// <summary>
     /// 更新Table中的数据
     /// </summary>
@@ -239,7 +201,6 @@ public class TableView<T, V> : MonoBehaviour
     //    return true;
     //}
 
-
     /// <summary>
     /// 删除表中行
     /// </summary>
@@ -254,31 +215,31 @@ public class TableView<T, V> : MonoBehaviour
             Debug.LogWarning("表中不存在键为：" + key.ToString() + " 的行；", gameObject);
             return false;
         }
-        row.SetDisactive(true);
-        int index = RowPool.IndexOf(row);
-        ActivedTableRows.Remove(key);
-        //将该行删除重新添加到末尾
-        RowPool.Remove(row);
-        RowPool.Add(row);
-
-        //重新计算布局
-        for (int i = index; i < RowPool.Count; i++)
+        row.Dispose();
+        //将之后的行赋值给前一个
+        int index = RowPool.IndexOf(row);        
+        for (int i = index; i < Count - 1; i++)
         {
-            RowPool[i].Init(index, this);
-            RowPool[i].RectTrans.anchoredPosition = new Vector2(0, -(ContentHeight * i + ContentInterval * (i + 1)));
-            RowPool[i].RectTrans.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, ContentHeight);
+            RowPool[i].Clone(RowPool[i + 1]);
         }
-        Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, (ContentHeight + ContentInterval) * ActivedTableRows.Count);
+        RowPool[Count - 1].Dispose();
         return true;
     }
     public bool UpdateTable(Dictionary<T, V> dic)
     {
         foreach (var item in ActivedTableRows)
         {
-            item.Value.SetDisactive(false);
+            item.Value.Dispose();
         }
-        ActivedTableRows.Clear();
-
+        if (dic.Count > Capacity)
+        {
+            RowPool = new List<TableRow<T, V>>(dic.Count);
+            ActivedTableRows = new Dictionary<T, TableRow<T, V>>(dic.Count);
+        }
+        else
+        {
+            ActivedTableRows.Clear();
+        }
         if (dic == null || dic.Count == 0)
         {
             //Debug.LogWarning("Table 数据为空",gameObject);
@@ -302,10 +263,9 @@ public class TableView<T, V> : MonoBehaviour
                     return false;
                 }
                 ActivedTableRows.Add(item.Key, row);
-                row.SetActive();
+                row.SetActive(true);
             }
         }
-        Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, (ContentHeight + ContentInterval) * ActivedTableRows.Count);
         return true;
     }
     public virtual void ShowTableView()
@@ -314,34 +274,38 @@ public class TableView<T, V> : MonoBehaviour
         Content.parent.gameObject.SetActive(false);
         Content.parent.gameObject.SetActive(true);
     }
+
     /// <summary>
-    /// 隐藏表
+    /// 销毁并隐藏表，并销毁物体
     /// </summary>
-    /// <param name="isclear">是否清除表中数据</param>
-    /// <param name="isrecycle">是否回收多余的行（回收之后只剩下初始化数量个行,且会回收全部数据）</param>
-    public void HideTableView(bool isclear = false, bool isrecycle = false)
+    /// <param name="isrecycle">是否回收多余的行</param>
+    public void Dispose(bool isrecycle)
     {
         gameObject.SetActive(false);
 
-        if (isclear)
+        foreach (var item in ActivedTableRows)
         {
-            foreach (var item in ActivedTableRows)
-            {
-                item.Value.SetDisactive(isclear);
-            }
-            ActivedTableRows.Clear();
+            item.Value.Dispose();
+        }
+        ActivedTableRows.Clear();
 
-            if (isrecycle)
+        if (isrecycle)
+        {
+            while (RowPool.Count > DefaultRow)
             {
-                while (RowPool.Count > DefaultRow)
-                {
-                    TableRow<T, V> row = RowPool[DefaultRow];
-                    RowPool.Remove(row);
-                    GameObject.DestroyImmediate(row.gameObject);
-                }
+                TableRow<T, V> row = RowPool[DefaultRow];
+                RowPool.Remove(row);
+                GameObject.DestroyImmediate(row.gameObject);
             }
         }
     }
+    public void Dispose()
+    {
+        Dispose(false);
+    }
+    /// <summary>
+    /// 隐藏表
+    /// </summary>
     public void HideTableView()
     {
         //Content.parent.gameObject.SetActive(false);
@@ -478,10 +442,12 @@ public class TableView<T, V> : MonoBehaviour
         }
     }
     #endregion
-    
+
     #region  排序
     //UI层只负责显示，在填充前先将数据排序，然后再填充表进行排序。
+
     #endregion
+    #region 取值
     /// <summary>
     /// 根据顺序获得Key值
     /// </summary>
@@ -489,24 +455,37 @@ public class TableView<T, V> : MonoBehaviour
     /// <returns></returns>
     public T GetKeyByIndex(int index)
     {
-        if (index < RowCount)
-            return RowPool[index].Key;
+        if (index >= Count)
+            throw new IndexOutOfRangeException();
         else
-            Debug.LogError("Can't get key");
-        return default(T);
-    }
-    public TableRow<T, V> GetRowByIndex(int index)
-    {
-        if (index < RowCount)
-            return RowPool[index];
-        return null;
+            return RowPool[index].Key;
     }
     public int GetIndexByKey(T key)
     {
-        if (ActivedTableRows.ContainsKey(key))
+        TableRow<T, V> row;
+        if (ActivedTableRows.TryGetValue(key,out row))
         {
-            return RowPool.IndexOf(ActivedTableRows[key]);
+            return row.Index;
         }
+        Debug.LogError("TableView do not contains key:" + key, gameObject);
         return -1;
     }
+    public TableRow<T, V> GetRowByIndex(int index)
+    {
+        if (index >= Count)
+            throw new IndexOutOfRangeException();
+        else
+            return RowPool[index];
+    }
+
+    public TableRow<T, V> GetRowByKey(T key)
+    {
+        if (ActivedTableRows.ContainsKey(key))
+        {
+            return ActivedTableRows[key];
+        }
+        Debug.LogError("TableView do not contains key:" + key, gameObject);
+        return null;
+    }
+    #endregion
 }
